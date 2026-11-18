@@ -11,9 +11,9 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'shining-media', privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ])
 
-const isDev = process.env.NODE_ENV === 'development'
+const isDev = !app.isPackaged && process.env.NODE_ENV === 'development'
 const DEV_URL = 'http://localhost:5173/'
-const isShot = process.env.SHINING_SHOT === '1'
+const isShot = !app.isPackaged && process.env.SHINING_SHOT === '1'
 
 let mainWindow = null
 let captureWindow = null
@@ -132,7 +132,7 @@ async function saveApiKey(key) {
 app.setAppUserModelId('com.shining.desktop')
 
 // 截图模式下禁用窗口遮挡节流，否则 capturePage 会抛 UnknownVizError
-if (process.env.SHINING_SHOT === '1') {
+if (isShot) {
   app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
   app.commandLine.appendSwitch('disable-renderer-backgrounding')
   app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
@@ -142,7 +142,9 @@ if (process.env.SHINING_SHOT === '1') {
 
 function rendererUrl(hash) {
   if (isDev) return `${DEV_URL}#${hash}`
-  return `file://${path.join(__dirname, '..', 'dist', 'index.html')}#${hash}`
+  const url = pathToFileURL(path.join(__dirname, '..', 'dist', 'index.html'))
+  url.hash = hash
+  return url.href
 }
 
 function baseWebPreferences() {

@@ -253,6 +253,7 @@ UI 入口：`src/views/SplitPanel.tsx`，只从灵感详情面板进入，**不�
 npm install          # 首次（国内建议先设 ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/）
 npm run dev          # Vite + Electron 热更新
 npm run build        # 构建 renderer 到 dist/
+npm run package:win  # Windows x64 便携 ZIP + SHA-256，输出到 release/
 npm start            # 构建后直接跑
 npm run shot         # 无头截图到 shots/（自检 UI 用，跑完自动退出）
 npm run test:store   # 数据层 + 规则拆分的冒烟测试
@@ -281,6 +282,7 @@ Key 文件：`%APPDATA%\闪灵\secret.bin`（DPAPI 加密，不可明文读取�
 - ⬜ 导出 JSON / Markdown
 - ⬜ 启动提醒、旧灵感浮现
 - ⬜ 标签与项目筛选
-- ⬜ 打包（electron-builder）
+- ✅ Windows x64 便携 ZIP（`npm run package:win`，只从白名单打包，不读取本机数据）
+- ⬜ Windows 安装器与应用签名
 
 做下一步之前先看 `PRD.md` 的 MVP 范围，不要提前实现 M2 的东西。
