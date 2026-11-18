@@ -1,0 +1,45 @@
+# Dependencies and build output
+node_modules/
+dist/
+dist-probe/
+out/
+release/
+*.asar
+*.exe
+*.msi
+
+# Local screenshots and diagnostics
+shots/
+.oil-ui/
+.opencode/
+coverage/
+logs/
+*.log
+
+# User data, attachments, settings and exports
+data.json
+data.json.*
+config.json
+config.json.*
+*.db
+*.db-*
+*.sqlite*
+attachments/
+backups/
+exports/
+userData/
+
+# Credentials and machine-specific configuration
+.env
+.env.*
+.npmrc
+.local/
+*.local.json
+*.local.json.*
+credentials.json
+secrets/
+secret.bin*
+*.key
+*.pem
+*.pfx
+*.p12

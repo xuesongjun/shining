@@ -1,0 +1,32 @@
+{
+  "name": "shining",
+  "productName": "闪灵",
+  "version": "0.1.0",
+  "private": true,
+  "description": "闪灵 · 闪现的灵感，3 秒记下",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k -n VITE,APP -c cyan,green \"vite\" \"wait-on tcp:5173 && cross-env NODE_ENV=development electron .\"",
+    "build": "vite build",
+    "start": "npm run build && electron .",
+    "shot": "cross-env SHINING_SHOT=1 electron .",
+    "test:store": "node scripts/test-store.js"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.14",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.1",
+    "@vitejs/plugin-react": "^5.0.4",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^45.3.3",
+    "tailwindcss": "^4.1.14",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.8",
+    "wait-on": "^9.0.1"
+  }
+}
