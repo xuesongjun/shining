@@ -4,9 +4,9 @@
 
 ## 下载
 
-当前版本：**[v0.1.0 · Windows 预览版](https://github.com/xuesongjun/shining/releases/tag/v0.1.0)**。私有仓库的下载链接需要用有权限的 GitHub 账号打开。
+在 **[GitHub Releases](https://github.com/xuesongjun/shining/releases)** 下载 Windows 便携版。请选择 `win-x64.zip`，不是 GitHub 自动生成的 Source code。
 
-1. 下载 `shining-v0.1.0-win-x64.zip`，并解压整个文件夹。
+1. 下载 `shining-v<版本号>-win-x64.zip`，并解压整个文件夹。升级前请从托盘退出正在运行的旧版。
 2. 双击 `Shining.exe`。这是 Windows x64 便携版，不需要安装 Node.js，也不要只把 EXE 从文件夹里移出来。
 3. 关闭主窗口后，闪灵仍在系统托盘运行。要退出，请右键托盘图标，选择「退出」。
 
@@ -15,12 +15,14 @@
 | 操作 | 方法 |
 | --- | --- |
 | 打开闪念窗 | `Ctrl+Shift+Space` |
-| 打开或隐藏主窗口 | `Ctrl+Shift+X` |
+| 打开或前置主窗口；主窗在前台时隐藏 | `Ctrl+Shift+X` |
 | 记为灵感 | 直接输入，按 `Enter` 保存 |
 | 记为任务或留痕 | 分别用 `/t ` 或 `/r ` 开头 |
 | 换行、关闭并保留草稿 | 分别按 `Shift+Enter`、`Esc` |
 
 闪念窗和主窗口支持粘贴图片。灵感可以转为任务，任务可以设优先级、截止时间和提醒。「留痕」按天记录、按周查看。
+
+从 v0.1.1 起，托盘菜单和主窗侧栏会显示实际注册的快捷键。`Ctrl+Shift+X` 被占用时会尝试 `Ctrl+Alt+Shift+X`；两组都不可用时，仍可点击右下角托盘图标，或重新双击 `Shining.exe` 打开主窗。如果旧的任务栏固定项还显示旧图标，可取消固定后重新固定新版。
 
 ## 数据与 AI
 

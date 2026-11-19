@@ -14,11 +14,14 @@ protocol.registerSchemesAsPrivileged([
 const isDev = !app.isPackaged && process.env.NODE_ENV === 'development'
 const DEV_URL = 'http://localhost:5173/'
 const isShot = !app.isPackaged && process.env.SHINING_SHOT === '1'
+// Windows 会按此标识复用任务栏图标。迁离旧版标识后保持稳定，且不与开发版分组。
+const APP_USER_MODEL_ID = app.isPackaged ? 'Shining.Desktop' : 'Shining.Desktop.Dev'
 
 let mainWindow = null
 let captureWindow = null
 let tray = null
 let store = null
+let hotkeys
 let cachedApiKey
 let localAiDefaults = {}
 
@@ -129,7 +132,7 @@ async function saveApiKey(key) {
   }
 }
 
-app.setAppUserModelId('com.shining.desktop')
+app.setAppUserModelId(APP_USER_MODEL_ID)
 
 // 截图模式下禁用窗口遮挡节流，否则 capturePage 会抛 UnknownVizError
 if (isShot) {
@@ -157,7 +160,7 @@ function baseWebPreferences() {
 }
 
 function createMainWindow() {
-  mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1080,
     height: 720,
     minWidth: 860,
@@ -169,21 +172,34 @@ function createMainWindow() {
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),
     webPreferences: baseWebPreferences(),
   })
+  mainWindow = win
 
-  mainWindow.loadURL(rendererUrl('/main'))
+  if (process.platform === 'win32' && app.isPackaged) {
+    // 任务栏分组及固定项会读取独立的 Shell 属性，不一定使用窗口或 EXE 的默认图标。
+    win.setAppDetails({
+      appId: APP_USER_MODEL_ID,
+      appIconPath: process.execPath,
+      appIconIndex: 0,
+      relaunchCommand: `"${process.execPath}"`,
+      relaunchDisplayName: app.getName(),
+    })
+  }
 
-  mainWindow.once('ready-to-show', () => {
-    if (!isShot) mainWindow.show()
+  win.loadURL(rendererUrl('/main'))
+
+  win.once('ready-to-show', () => {
+    if (!isShot && !win.isVisible()) win.show()
   })
 
-  mainWindow.on('close', (e) => {
+  win.on('close', (e) => {
     if (!app.isQuitting) {
       e.preventDefault()
-      mainWindow.hide()
+      win.hide()
     }
   })
+  win.on('closed', () => { if (mainWindow === win) mainWindow = null })
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
     return { action: 'deny' }
   })
@@ -241,15 +257,16 @@ function hideCapture() {
 }
 
 function showMain() {
-  if (!mainWindow) return createMainWindow()
+  if (!mainWindow || mainWindow.isDestroyed()) return createMainWindow()
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
+  if (!mainWindow.isFocused()) mainWindow.moveTop()
   mainWindow.focus()
 }
 
 function toggleMain() {
-  if (!mainWindow) return createMainWindow()
-  if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
+  // 在后台但仍可见的窗口应该前置，而不是被当成已经打开的前台窗口隐藏。
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized() && mainWindow.isFocused()) {
     mainWindow.hide()
   } else {
     showMain()
@@ -272,8 +289,8 @@ function buildTray() {
     const menu = Menu.buildFromTemplate([
       { label: `未完成 ${pending} 条`, enabled: false },
       { type: 'separator' },
-      { label: '快速记录', accelerator: 'Control+Shift+Space', click: showCapture },
-      { label: '打开闪灵', click: showMain },
+      { label: trayShortcut('快速记录', hotkeys.capture), click: showCapture },
+      { label: trayShortcut('打开闪灵', hotkeys.main), click: showMain },
       { type: 'separator' },
       { label: '退出', click: () => { app.isQuitting = true; app.quit() } },
     ])
@@ -282,21 +299,25 @@ function buildTray() {
   }
 
   rebuild()
-  tray.on('click', toggleMain)
+  tray.on('click', showMain)
   store.onChange = () => { rebuild(); broadcast() }
 }
 
 /* ---------- ipc ---------- */
 
+function snapshot() {
+  return { ...store.snapshot(), hotkeys }
+}
+
 function broadcast() {
-  const snap = store.snapshot()
+  const snap = snapshot()
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('data:changed', snap)
   }
 }
 
 function registerIpc() {
-  ipcMain.handle('data:snapshot', () => store.snapshot())
+  ipcMain.handle('data:snapshot', () => snapshot())
 
   ipcMain.handle('idea:create', (_e, content, images) => store.createIdea(content, images))
   ipcMain.handle('idea:update', (_e, { id, patch }) => store.updateIdea(id, patch))
@@ -311,11 +332,11 @@ function registerIpc() {
   ipcMain.handle('task:delete', (_e, id) => store.deleteTask(id))
 
   ipcMain.handle('capture:hide', () => hideCapture())
-  ipcMain.handle('main:show', () => { mainWindow.show(); mainWindow.focus() })
+  ipcMain.handle('main:show', () => showMain())
   ipcMain.handle('settings:update', (_e, patch) => {
     Object.assign(store.data.settings, patch)
-    store.commit()
     if ('hotkey' in patch || 'mainHotkey' in patch) registerHotkey()
+    store.commit()
     return store.data.settings
   })
 
@@ -457,30 +478,32 @@ function registerIpc() {
 
 /* ---------- hotkey ---------- */
 
+function registerShortcut(configured, defaultKey, fallback, action) {
+  const preferred = (typeof configured === 'string' ? configured.trim() : '') || defaultKey
+  for (const key of new Set([preferred, fallback])) {
+    try {
+      if (globalShortcut.register(key, action)) return { preferred, active: key }
+    } catch {
+      // 旧配置中的无效组合键也按注册失败处理，不影响启动或托盘入口。
+    }
+  }
+  return { preferred, active: null }
+}
+
+function trayShortcut(label, { preferred, active }) {
+  if (!active) return `${label}（快捷键未注册）`
+  const key = active.replace(/\bControl\b/g, 'Ctrl')
+  return `${label} · ${key}${active === preferred ? '' : '（备用）'}`
+}
+
 function registerHotkey() {
   globalShortcut.unregisterAll()
-
-  const captureKey = store.data.settings.hotkey || 'Control+Shift+Space'
-  const okCapture = globalShortcut.register(captureKey, showCapture)
-  if (!okCapture) {
-    // 冲突时退回到一个更冷门的组合
-    globalShortcut.register('Control+Alt+Shift+Space', showCapture)
+  const { hotkey, mainHotkey } = store.data.settings
+  hotkeys = {
+    capture: registerShortcut(hotkey, 'Control+Shift+Space', 'Control+Alt+Shift+Space', showCapture),
+    main: registerShortcut(mainHotkey, 'Control+Shift+X', 'Control+Alt+Shift+X', toggleMain),
   }
-
-  const mainKey = store.data.settings.mainHotkey || 'Control+Shift+X'
-  const okMain = globalShortcut.register(mainKey, toggleMain)
-  if (!okMain) {
-    globalShortcut.register('Control+Alt+Shift+X', toggleMain)
-  }
-
-  console.log(
-    '[hotkey]',
-    captureKey,
-    okCapture ? 'ok' : 'fallback',
-    '|',
-    mainKey,
-    okMain ? 'ok' : 'fallback',
-  )
+  console.log('[hotkey]', trayShortcut('闪念', hotkeys.capture), '|', trayShortcut('主窗', hotkeys.main))
 }
 
 /* ---------- AI 排期 ---------- */
@@ -556,10 +579,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
-      mainWindow.show()
-      mainWindow.focus()
-    }
+    if (store) showMain()
   })
 
   app.whenReady().then(async () => {
@@ -577,11 +597,11 @@ if (!app.requestSingleInstanceLock()) {
       }
     })
 
+    registerHotkey()
     registerIpc()
     createMainWindow()
     createCaptureWindow()
     buildTray()
-    registerHotkey()
     startReminders()
 
     app.setLoginItemSettings({ openAtLogin: !!store.data.settings.launchAtLogin })

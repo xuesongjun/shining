@@ -179,6 +179,8 @@ Log  { id, content, created_at, images?: string[] }   // 留痕：只增不删�
 代码位置：`electron/llm.js`（调用 + 提示词 + 解析 + 规则拆分），IPC 入口 `ai:split` / `ai:status` / `ai:set-key`。
 UI 入口：`src/views/SplitPanel.tsx`，只从灵感详情面板进入，**不在捕获链路里**。
 
+拆解按项目分组返回 JSON 数组（`[{ project, tasks }]`）。只把原文里明确出现的名称加到该组任务标题，格式 `【项目名】动作`，预览和落盘使用同一标题，既有任务不改名。本地规则只识别显式的 `项目：名称` 标题。
+
 ### 时间解析（自动排期）
 
 - 任务创建后**异步**调用 `parseSchedules(texts[])`，一次请求批量解析，绝不阻塞捕获。
@@ -243,7 +245,8 @@ UI 入口：`src/views/SplitPanel.tsx`，只从灵感详情面板进入，**不�
 | 记下灵感（闪念窗） | `Ctrl+Shift+Space` | `settings.hotkey` |
 | 打开 / 关闭主窗 | `Ctrl+Shift+X` | `settings.mainHotkey` |
 
-冲突时自动退到 `Ctrl+Alt+Shift+Space` / `Ctrl+Alt+Shift+X`，并在主进程打印 `[hotkey] <capture键> ok|fallback | <main键> ok|fallback`。
+默认键注册失败时尝试 `Ctrl+Alt+Shift+Space` / `Ctrl+Alt+Shift+X`。侧栏与托盘显示实际注册的键；两组失败时保留托盘入口，不显示一个不可用的组合。注册结果只进运行时快照，不写入 `data.json`。
+主窗快捷键只在窗口已经聚焦时隐藏它，否则打开、恢复或前置窗口。点击托盘和重新双击启动器始终打开主窗。
 
 ---
 
@@ -282,7 +285,7 @@ Key 文件：`%APPDATA%\闪灵\secret.bin`（DPAPI 加密，不可明文读取�
 - ⬜ 导出 JSON / Markdown
 - ⬜ 启动提醒、旧灵感浮现
 - ⬜ 标签与项目筛选
-- ✅ Windows x64 便携 ZIP（`npm run package:win`，只从白名单打包，不读取本机数据）
+- ✅ Windows x64 便携 ZIP（`npm run package:win`，嵌入闪灵图标，只从白名单打包，不读取本机数据）
 - ⬜ Windows 安装器与应用签名
 
 做下一步之前先看 `PRD.md` 的 MVP 范围，不要提前实现 M2 的东西。

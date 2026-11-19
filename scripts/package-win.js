@@ -41,6 +41,43 @@ function assertWinX64(exe) {
   }
 }
 
+async function writeLauncher(source, dest) {
+  const { NtExecutable, NtExecutableResource, Resource, Data } = await import('resedit')
+  // 只生成便携包里的启动器；不修改 node_modules 里的 Electron。生成的应用未做 Authenticode 签名。
+  const executable = NtExecutable.from(fs.readFileSync(source), { ignoreCert: true })
+  const resource = NtExecutableResource.from(executable)
+  const icons = ['tray.png', 'icon@64.png', 'icon.png'].map((file) => {
+    const png = fs.readFileSync(path.join(root, 'assets', file))
+    const width = png.readUInt32BE(16)
+    const height = png.readUInt32BE(20)
+    return Data.RawIconItem.from(png, width, height, 32)
+  })
+  const groups = Resource.IconGroupEntry.fromEntries(resource.entries)
+  for (const { id, lang } of groups.length ? groups : [{ id: 1, lang: 1033 }]) {
+    Resource.IconGroupEntry.replaceIconsForResource(resource.entries, id, lang, icons)
+  }
+
+  const [major, minor, patch] = manifest.version.split('-')[0].split('.').map(Number)
+  for (const info of Resource.VersionInfo.fromEntries(resource.entries)) {
+    for (const lang of info.getAllLanguagesForStringValues()) {
+      info.setFileVersion(major, minor, patch, 0, lang.lang)
+      info.setProductVersion(major, minor, patch, 0, lang.lang)
+      info.setStringValues(lang, {
+        FileDescription: manifest.productName,
+        ProductName: manifest.productName,
+        ProductVersion: manifest.version,
+        InternalName: 'Shining',
+        OriginalFilename: 'Shining.exe',
+      })
+    }
+    info.outputToResourceEntries(resource.entries)
+  }
+
+  resource.outputResource(executable)
+  fs.mkdirSync(path.dirname(dest), { recursive: true })
+  fs.writeFileSync(dest, Buffer.from(executable.generate()), { flag: 'wx' })
+}
+
 async function sha256(file) {
   const hash = createHash('sha256')
   for await (const bytes of fs.createReadStream(file)) hash.update(bytes)
@@ -72,7 +109,7 @@ async function main() {
   try {
     const portable = path.join(staging, basename)
     const appDir = path.join(portable, 'resources', 'app')
-    copyFile(exe, path.join(portable, 'Shining.exe'))
+    await writeLauncher(exe, path.join(portable, 'Shining.exe'))
     for (const file of runtimeFiles) copyFile(path.join(runtime, file), path.join(portable, file))
     for (const locale of fs.readdirSync(path.join(runtime, 'locales'))) {
       if (/^[a-z0-9-]+\.pak$/i.test(locale)) copyFile(path.join(runtime, 'locales', locale), path.join(portable, 'locales', locale))

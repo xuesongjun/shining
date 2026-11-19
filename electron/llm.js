@@ -12,10 +12,13 @@ const TIMEOUT_MS = 6000
 const SYSTEM_PROMPT = `你是任务拆解器。把用户的一段发散想法拆成可执行的待办。
 规则：
 1. 只输出 JSON 数组，不要任何解释，不要 markdown 代码块。
-2. 每个元素形如 {"content":"动词开头的动作描述"}。
-3. 一件事一条，最多 8 条，不要重复。
-4. 不可执行的内容（感叹、偏好、疑问、吐槽）直接丢弃。
-5. 保留原文里的关键限定词（时间、对象、范围），不要编造新信息。`
+2. 按项目归组，每组形如 {"project":"原文里的项目名或产品名","tasks":["动词开头的动作描述"]}。
+3. 原文点名项目或产品时，逐字复制名称到 project。同一项目贯穿的后续事项，即使没重复项目名，也归到该组；涉及多个项目分别建组。没有明确项目的事项归到 project 为 null 的组，不要猜。
+4. 一件事一条，总共最多 8 条，不要重复。tasks 只写动作，不再添加项目名前缀；保留原文里的时间、对象、范围，不要编造新信息。
+5. 不可执行的内容（感叹、偏好、疑问、吐槽）直接丢弃。
+
+示例：输入「闪灵增加收藏搜索，再支持按关键词找回文章」，输出：
+[{"project":"闪灵","tasks":["增加收藏搜索","支持按关键词找回收藏的文章"]}]`
 
 function stripFence(text) {
   return text
@@ -24,7 +27,27 @@ function stripFence(text) {
     .trim()
 }
 
-function parseTasks(raw) {
+// 只加原文里确实写到的名字，不把模型推测出来的名称变成任务标签。
+function projectInSource(value, source) {
+  const name = typeof value === 'string' ? value.trim() : ''
+  return name && name.length <= 48 && !/[\r\n【】]/.test(name) && typeof source === 'string' && source.includes(name) ? name : ''
+}
+
+function taskTitle(content, project) {
+  if (!project) return content
+  const prefix = `【${project}】`
+  if (content.startsWith(prefix)) return content.slice(prefix.length).trim() ? content : ''
+  for (const separator of ['：', ':', ' · ']) {
+    const alternate = project + separator
+    if (content.startsWith(alternate)) {
+      const action = content.slice(alternate.length).trimStart()
+      return action ? prefix + action : ''
+    }
+  }
+  return prefix + content
+}
+
+function parseTasks(raw, source = '') {
   if (!raw) return []
   let text = stripFence(String(raw))
   const start = text.indexOf('[')
@@ -40,14 +63,28 @@ function parseTasks(raw) {
   if (!Array.isArray(parsed)) return []
 
   const out = []
-  for (const item of parsed) {
-    const content = typeof item === 'string' ? item : item && item.content
-    if (typeof content !== 'string') continue
+  const addTask = (item, project) => {
+    const content = typeof item === 'string' ? item : item?.content
+    if (typeof content !== 'string') return
     const clean = content.trim().replace(/^[-•*\d.、\s]+/, '')
-    if (clean.length < 2) continue
-    if (!out.includes(clean)) out.push(clean)
+    if (clean.length < 2) return
+    const title = taskTitle(clean, project)
+    if (title && !out.includes(title)) out.push(title)
   }
-  return out.slice(0, 8)
+  for (const item of parsed) {
+    const project = projectInSource(item?.project, source)
+    if (Array.isArray(item?.tasks)) {
+      for (const task of item.tasks) {
+        addTask(task, project)
+        if (out.length === 8) return out
+      }
+    } else {
+      // 兼容未按分组格式输出的模型。
+      addTask(item, project)
+      if (out.length === 8) return out
+    }
+  }
+  return out
 }
 
 /**
@@ -59,22 +96,25 @@ function ruleSplit(text) {
     .replace(/[#＃][^\s，。；,;、]+/g, ' ')
     .trim()
 
-  const parts = cleaned
-    .split(/[，。；,;、\n]+|(?:\s*(?:还有|另外|顺便|然后|接着|同时|以及|并且|之后|最后)\s*)/)
-    .map((s) =>
-      s
-        .trim()
-        .replace(/^(?:还要|要先|先|再|然后|另外|顺便|接着|同时|以及|并且|得|要|需要|记得|别忘了)\s*/, '')
-        .replace(/^(?:给|把|将)\s*/, '')
-        .trim(),
-    )
-    .filter((s) => s.length >= 3)
-
   const out = []
-  for (const p of parts) {
-    if (!out.includes(p)) out.push(p)
+  let project = ''
+  for (const part of cleaned.split(/[，。；,;、\n]+|(?:\s*(?:还有|另外|顺便|然后|接着|同时|以及|并且|之后|最后)\s*)/)) {
+    const heading = part.trim().match(/^项目\s*[：:]\s*(.+)$/)
+    if (heading) {
+      // 本地规则只识别明确的「项目：名称」标题，不从普通句子里猜项目。
+      project = projectInSource(heading[1], cleaned)
+      continue
+    }
+    const content = part.trim()
+      .replace(/^(?:还要|要先|先|再|然后|另外|顺便|接着|同时|以及|并且|得|要|需要|记得|别忘了)\s*/, '')
+      .replace(/^(?:给|把|将)\s*/, '')
+      .trim()
+    if (content.length < 3) continue
+    const title = taskTitle(content, project)
+    if (title && !out.includes(title)) out.push(title)
+    if (out.length === 8) break
   }
-  return out.slice(0, 8)
+  return out
 }
 
 async function chatCompletion({ baseUrl, apiKey, model, text, maxTokens = 900 }) {
@@ -130,7 +170,7 @@ async function splitToTasks({ text, apiKey, baseUrl, model }) {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const raw = await chatCompletion({ baseUrl, apiKey, model, text })
-      const tasks = parseTasks(raw)
+      const tasks = parseTasks(raw, text)
       if (tasks.length) {
         return { tasks, source: 'llm', ms: Date.now() - started }
       }

@@ -74,12 +74,18 @@ export interface SplitResult {
   ms: number
 }
 
+export interface HotkeyRegistration {
+  preferred: string
+  active: string | null
+}
+
 export interface Snapshot {
   version: number
   ideas: Idea[]
   tasks: Task[]
   logs: LogEntry[]
   settings: Settings
+  hotkeys?: { capture: HotkeyRegistration; main: HotkeyRegistration }
 }
 
 declare global {

@@ -1,7 +1,7 @@
 {
   "name": "shining",
   "productName": "闪灵",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "private": true,
   "description": "闪灵 · 闪现的灵感，3 秒记下",
   "main": "electron/main.js",
@@ -25,6 +25,7 @@
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "electron": "^45.3.3",
+    "resedit": "2.0.3",
     "tailwindcss": "^4.1.14",
     "typescript": "^5.9.3",
     "vite": "^8.3.8",

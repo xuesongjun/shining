@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ClipboardEvent as ReactClipboardEvent, ReactNode } from 'react'
-import type { Idea, Priority, Snapshot, Task } from '../types'
+import type { HotkeyRegistration, Idea, Priority, Snapshot, Task } from '../types'
 import { dueLabel, stamp } from '../lib/time'
 import { fileToBase64, imageFilesFromClipboard } from '../lib/clipboard'
 import { AttachmentThumb, BrandMark, Icon, Keycap, PageHeading, PriorityChip } from '../components/ui'
@@ -295,13 +295,9 @@ export default function Main() {
         <div className="sidebar-footer">
           <div className="sidebar-expanded sidebar-shortcuts">
             <div className="mb-2.5 flex items-center gap-2 font-semibold text-sub"><Icon name="keyboard" size={16} /> 快捷键</div>
-            <div className="space-y-2.5 text-muted">
-              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-                <span>闪念</span><Keycap>{prettyKey(snap.settings.hotkey || 'Ctrl+Shift+Space')}</Keycap>
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-                <span>主窗</span><Keycap>{prettyKey(snap.settings.mainHotkey || 'Ctrl+Shift+X')}</Keycap>
-              </div>
+            <div className="space-y-2.5 text-muted" aria-live="polite">
+              <ShortcutHint label="闪念" configured={snap.settings.hotkey || 'Ctrl+Shift+Space'} registration={snap.hotkeys?.capture} />
+              <ShortcutHint label="主窗" configured={snap.settings.mainHotkey || 'Ctrl+Shift+X'} registration={snap.hotkeys?.main} />
             </div>
           </div>
           <div className="sidebar-footer-row">
@@ -528,7 +524,18 @@ function RowAction({ label, icon, onClick, danger }: { label: string; icon: Icon
   )
 }
 
-function prettyKey(key: string) { return key.replace(/Control/g, 'Ctrl').replace(/\s*\+\s*/g, ' + ') }
+function ShortcutHint({ label, configured, registration }: { label: string; configured: string; registration?: HotkeyRegistration }) {
+  const key = registration ? registration.active : configured
+  const fallback = registration && key && key !== registration.preferred
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+      <span>{label}{fallback ? '（备用）' : ''}</span>
+      {key
+        ? <Keycap>{key.replace(/\bControl\b/g, 'Ctrl').replace(/\s*\+\s*/g, ' + ')}</Keycap>
+        : <span>快捷键不可用 · 从托盘打开</span>}
+    </div>
+  )
+}
 
 function EmptyState({ view, query, onCompose }: { view: View; query: string; onCompose?: () => void }) {
   const title = query ? '没有找到相关记录' : view === 'inbox' ? '还没有灵感' : view === 'tasks' ? '没有待办任务' : '还没有完成的任务'
